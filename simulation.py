@@ -55,11 +55,11 @@ class RestaurantSimulator:
         self.server_queue = []
         self.cook_queue = []
 
-    def schedule_event(self, time, event_type, customer_id=None, dish=None):
+    def schedule_event(self, time, event_type, customer_id=None):
         """
         Add an event to the priority queue.
         """
-        heapq.heappush(self.event_queue, (time, event_type, customer_id, dish))
+        heapq.heappush(self.event_queue, (time, event_type, customer_id))
 
     def process_event(self):
         """
@@ -67,7 +67,7 @@ class RestaurantSimulator:
         """
         if not self.event_queue:
             return False
-        current_time, event_type, customer_id, dish = heapq.heappop(self.event_queue)
+        current_time, event_type, customer_id,  = heapq.heappop(self.event_queue)
         if event_type == 'arrival':
             self.handle_arrival(current_time, customer_id)
         elif event_type == 'order':
@@ -96,6 +96,8 @@ class RestaurantSimulator:
                     self.schedule_event(time + prep_time, 'meal_prep', customer_id)
                 else:
                     self.cook_queue.append((prep_time, customer_id))
+            else:
+                print("Out of Inventory")
         else:
             self.server_queue.append((time, customer_id))
     
@@ -128,7 +130,7 @@ class RestaurantSimulator:
 
         if self.server_queue and self.available_servers > 0:
             queued_time, queued_id = self.server_queue.pop(0)
-            self.schedule_event(max(time, queued_time), 'ordering', queued_id)
+            self.schedule_event(max(time, queued_time), 'order', queued_id)
 
 
     def generate_customer_id(self):
@@ -196,10 +198,9 @@ class RestaurantSimulator:
             customer_id = self.generate_customer_id()
             self.schedule_event(t, 'arrival', customer_id)
 
-        #print(self.event_queue)  
+        print(self.event_queue)  
         while self.event_queue:
             self.process_event()
-
                 
 
 
@@ -211,8 +212,12 @@ class RestaurantSimulator:
         """
         total_revenue = self.order_log['Revenue'].sum()
         labor_costs = self.duration * (self.num_cooks * self.cook_wage  + self.num_servers * self.server_wage)
-        inventory_costs = self.order_log['Cost'].sum()
-        return total_revenue - labor_costs - inventory_costs
+        
+        # Cost of Goods Sold
+        sold_good_costs = self.order_log['Cost'].sum()
+        # Cost of Inventory
+        
+        return total_revenue - labor_costs - sold_good_costs
         
 
 

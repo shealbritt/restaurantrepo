@@ -2,28 +2,36 @@ import numpy as np
 import pandas as pd
 import heapq
 
+#TODO 4. Add multiple dishes per customer
+# Number of tables with parties like 3 4 tops for example 
+#TODO 5. Make customers who arrive wait in a queue
+#TODO 3. Dining time restraint people should be gone by 10 minutes after
+# 2. Penalty for Inventory 
+#TODO 1. Arrival rates differ per hour
+
 class RestaurantSimulator:
-    def __init__(self, menu_df, labor_costs, seating_capacity, num_cooks, num_servers, inventory_df, server_capacity, cook_capacity, cook_wage, server_wage, avg_consumption_time):
+    def __init__(self, duration, arrival_rate, menu_df, seating_capacity, num_cooks, num_servers, inventory_df, server_capacity, cook_capacity, cook_wage, server_wage, avg_consumption_time):
         """
         Initialize the restaurant simulator with key parameters.
 
         Parameters:
         - menu_df (DataFrame): DataFrame containing dishes with columns ['Dish', 'Cost', 'SalePrice', 'PrepTime', 'DemandRating'].
         - Note Prep time takes into account all time from the point in which a customer is seated to the time in which they're food arrives
-        - labor_costs (dict): Dictionary with labor costs for 'cook' and 'server'.
         - seating_capacity (int): Number of tables in the restaurant.
         - num_cooks (int): Number of cooks available.
         - num_servers (int): Number of servers available.
         - inventory_df (DataFrame): DataFrame with columns ['Dish', 'Quantity'] for tracking inventory.
         """
+        inventory_df['Quantity'] = inventory_df['Quantity'].clip(lower=0)
         self.menu_df = menu_df
-        self.labor_costs = labor_costs
         self.seating_capacity = seating_capacity
         self.server_capacity = server_capacity
         self.cook_capacity = cook_capacity
-        self.num_cooks = num_cooks
-        self.num_servers = num_servers
+        self.num_cooks = max(num_cooks, 0)
+        self.num_servers = max(num_servers, 0)
         self.inventory_df = inventory_df
+        self.duration = duration
+        self.arrival_rate = arrival_rate
 
         # State variables
         self.available_tables = seating_capacity
@@ -34,7 +42,6 @@ class RestaurantSimulator:
         self.avg_consumption_time = avg_consumption_time
         self.cook_wage = cook_wage
         self.server_wage = server_wage
-        self.duration = 0
 
         # queues
         self.event_queue = []
@@ -48,7 +55,9 @@ class RestaurantSimulator:
         self.available_cooks = self.cook_capacity * self.num_cooks
         self.order_log = pd.DataFrame(columns=['CustomerID', 'ArrivalTime', 'Dish', 'WaitTime', 'ConsumptionTime', 'Revenue', 'Cost', 'DepartureTime'])
         self.customer_counter = 0 
-        self.duration = 0
+        self.inventory_df['Quantity'] = self.inventory_df['Quantity'].clip(lower=0)
+        self.num_cooks = max(self.num_cooks, 0)
+        self.num_servers = max(self.num_servers, 0)
 
         # queues
         self.event_queue = []
@@ -97,7 +106,7 @@ class RestaurantSimulator:
                 else:
                     self.cook_queue.append((prep_time, customer_id))
             else:
-                print("Out of Inventory")
+                z = 0# print("Out of Inventory")
         else:
             self.server_queue.append((time, customer_id))
     
@@ -147,7 +156,7 @@ class RestaurantSimulator:
                    'Revenue': None, 
                    'Cost': None,
                    'DepartureTime': None}])
-        self.order_log = pd.concat([self.order_log, new_row], ignore_index=True)
+        self.order_log.loc[len(self.order_log)] = new_row.iloc[0]
 
 
     def take_order(self, customer_id):
@@ -180,25 +189,24 @@ class RestaurantSimulator:
         self.inventory_df.loc[self.inventory_df['Dish'] == dish, 'Quantity'] -= 1
         
         
-    def run_simulation(self, duration, arrival_rate):
+    def run_simulation(self):
         """
         Run the simulation loop for a given duration with the specified arrival rate.
         Duration is in hours 
         """
         self.reset()
-        self.duration = duration
         t = 0 
         arrival_times = []
-        while t < duration:
+        while t < self.duration:
             # Generate a set of potential arrivals
-            time = np.random.exponential(1/arrival_rate)
+            time = np.random.exponential(1/self.arrival_rate)
             arrival_times.append(t + time)
             t += time
+       # print(len(arrival_times))
         for t in arrival_times:
             customer_id = self.generate_customer_id()
             self.schedule_event(t, 'arrival', customer_id)
 
-        print(self.event_queue)  
         while self.event_queue:
             self.process_event()
                 
@@ -210,14 +218,20 @@ class RestaurantSimulator:
         Calculate total revenue, total costs, and return the net profit.
         Wage per Hour
         """
+        #print(self.order_log)
         total_revenue = self.order_log['Revenue'].sum()
+        #print("revenue", total_revenue)
         labor_costs = self.duration * (self.num_cooks * self.cook_wage  + self.num_servers * self.server_wage)
-        
         # Cost of Goods Sold
         sold_good_costs = self.order_log['Cost'].sum()
-        # Cost of Inventory
         
-        return total_revenue - labor_costs - sold_good_costs
+        # C0st 0f remaining inventory
+        discount = 0.1
+        inventory_costs = 0
+        merged_df = self.inventory_df.merge(self.menu_df[['Dish', 'Cost']], on='Dish', how='left')
+        merged_df['Cost'] = merged_df['Cost'].fillna(0) 
+        inventory_costs = (merged_df['Cost'] * merged_df['Quantity']).sum()
+        return total_revenue - labor_costs - discount * inventory_costs - sold_good_costs
         
 
 

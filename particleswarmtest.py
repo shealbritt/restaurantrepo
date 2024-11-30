@@ -1,5 +1,3 @@
-# Import necessary libraries
-import numpy as np
 import pandas as pd
 from simulation import RestaurantSimulator
 from particleswarm import PSOOptimizer
@@ -25,7 +23,7 @@ simulation_params = {
         "menu_df": menu_df,  
         "seating_capacity": 50, # Should be updated to be more accurate
         "num_cooks": 5, 
-        "num_servers": 5,  
+        "num_servers": 5, 
         "inventory_df": inventory_df, 
         "server_capacity": 10,
         "cook_capacity": 10,

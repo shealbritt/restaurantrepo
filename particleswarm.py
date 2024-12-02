@@ -75,7 +75,7 @@ class PSOOptimizer:
         self.global_best_value = np.max(personal_best_values)
         
         w = 0.5  # Inertia weight
-        c1, c2 = 1.5, 1.5  # Coefs
+        c1, c2 = 1.5, 1.5  # Personal best weight, global best weight
 
         # Make sure shape matches particle[i]
         lower_bounds = np.array([

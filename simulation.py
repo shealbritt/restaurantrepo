@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import heapq
+import timeit
 
 #TODO 4. Add multiple dishes per customer
 # Number of tables with parties like 3 4 tops for example 
@@ -10,7 +11,7 @@ import heapq
 #TODO 1. Arrival rates differ per hour
 
 class RestaurantSimulator:
-    def __init__(self, duration, arrival_rate, menu_df, seating_capacity, num_cooks, num_servers, inventory_df, server_capacity, cook_capacity, cook_wage, server_wage, avg_consumption_time):
+    def __init__(self, duration, arrival_rates, menu_df, seating_capacity, num_cooks, num_servers, inventory_df, server_capacity, cook_capacity, cook_wage, server_wage, avg_consumption_time):
         """
         Initialize the restaurant simulator with key parameters.
 
@@ -29,11 +30,12 @@ class RestaurantSimulator:
         self.cook_capacity = cook_capacity
         self.num_cooks = max(num_cooks, 0)
         self.num_servers = max(num_servers, 0)
-        self.inventory_df = inventory_df
+        self.init_inventory_df = inventory_df
         self.duration = duration
-        self.arrival_rate = arrival_rate
+        self.arrival_rates = arrival_rates if isinstance(arrival_rates, list) else [arrival_rates]
 
         # State variables
+        self.inventory_df = inventory_df.copy()
         self.available_tables = seating_capacity
         self.available_servers = self.server_capacity * self.num_servers
         self.available_cooks = self.cook_capacity * self.num_cooks
@@ -50,6 +52,7 @@ class RestaurantSimulator:
     
     def reset(self):
         # State variables
+        self.inventory_df = self.init_inventory_df.copy()
         self.available_tables = self.seating_capacity
         self.available_servers = self.server_capacity * self.num_servers
         self.available_cooks = self.cook_capacity * self.num_cooks
@@ -195,20 +198,29 @@ class RestaurantSimulator:
         Duration is in hours 
         """
         self.reset()
+        interval_length = self.duration / len(self.arrival_rates)
         t = 0 
         arrival_times = []
-        while t < self.duration:
-            # Generate a set of potential arrivals
-            time = np.random.exponential(1/self.arrival_rate)
-            arrival_times.append(t + time)
-            t += time
-       # print(len(arrival_times))
+        
+        for rate_index, rate in enumerate(self.arrival_rates):
+            while t < self.duration and t < (rate_index + 1) * interval_length:
+                time = np.random.exponential(1 / rate)
+                if t + time > (rate_index + 1) * interval_length:
+                    # dont cross into next interval
+                    break
+                arrival_times.append(t + time)
+                t += time
+            
+            t = max(t, (rate_index + 1) * interval_length)
+      
         for t in arrival_times:
             customer_id = self.generate_customer_id()
             self.schedule_event(t, 'arrival', customer_id)
 
         while self.event_queue:
             self.process_event()
+            if(self.inventory_df['Quantity'] == 0).all():
+                break
                 
 
 
@@ -225,7 +237,7 @@ class RestaurantSimulator:
         # Cost of Goods Sold
         sold_good_costs = self.order_log['Cost'].sum()
         
-        # C0st 0f remaining inventory
+        # Cost 0f remaining inventory
         discount = 0.1
         inventory_costs = 0
         merged_df = self.inventory_df.merge(self.menu_df[['Dish', 'Cost']], on='Dish', how='left')
@@ -234,4 +246,39 @@ class RestaurantSimulator:
         return total_revenue - labor_costs - discount * inventory_costs - sold_good_costs
         
 
+if __name__ == "__main__":
+    menu_data = {
+        'Dish': ['Ramen', 'Sushi', 'Tsunami'],
+        'Cost': [2.5, 2, 2], # From Bosso meeting
+        'SalePrice': [17, 6.5, 9], # From Bosso menu
+        'PrepTime': [0.0167, 0.0083, 0.0416],  # in hours (1 mins, 0.5 mins, 2.5 mins) From Bosso
+        'DemandRating': [0.5, 0.3, 0.2]
+        }
+    menu_df = pd.DataFrame(menu_data)
 
+    # Create a sample inventory DataFrame
+    inventory_data = {
+            'Dish': ['Ramen', 'Sushi', 'Tsunami'],
+            'Quantity': [300, 300, 300]
+        }
+    inventory_df = pd.DataFrame(inventory_data)
+    simulation_params = {
+            "duration": 12,
+            "arrival_rate": 100,
+            "menu_df": menu_df,  
+            "seating_capacity": 50, # Should be updated to be more accurate
+            "num_cooks": 10, 
+            "num_servers": 5, 
+            "inventory_df": inventory_df, 
+            "server_capacity": 10,
+            "cook_capacity": 10,
+            "cook_wage": 17.5, # Data from Bosso meeting
+            "server_wage": 6.75, # Data from Bosso meeting
+            "avg_consumption_time": 1. 
+        }
+
+    simulator = RestaurantSimulator(**simulation_params)
+    simulator.run_simulation()
+    print("profit", simulator.calculate_profit())
+    print("Order Log", simulator.order_log)
+  

@@ -3,7 +3,7 @@ import pandas as pd
 from simulation import RestaurantSimulator 
 
 class PSOOptimizer:
-    def __init__(self, simulation_params, swarm_size=20, max_iter=50):
+    def __init__(self, simulation_params, simulator, swarm_size=20, max_iter=100):
         """
         Initialize the PSO optimizer.
 
@@ -12,6 +12,7 @@ class PSOOptimizer:
         - swarm_size (int): Number of particles in the swarm.
         - max_iter (int): Maximum number of iterations.
         """
+        self.simulator = simulator
         self.simulation_params = simulation_params
         self.swarm_size = swarm_size
         self.max_iter = max_iter
@@ -19,7 +20,7 @@ class PSOOptimizer:
         self.bounds = {
             "num_servers": (1, 10), 
             "num_cooks": (1, 10),
-            "inventory": (0, 100) 
+            "inventory": (0, 1000) 
         }
         self.global_best_position = None
         self.global_best_value = float('-inf')
@@ -41,7 +42,7 @@ class PSOOptimizer:
             velocities.append(velocity)
         return np.array(particles), np.array(velocities)
 
-    def evaluate_particle(self, position):
+    def evaluate_particle(self, position, num_runs = 1):
         """
         Evaluate the fitness of a particle using the simulation.
 
@@ -51,14 +52,18 @@ class PSOOptimizer:
         Returns:
         - profit (float): The profit calculated by the simulator.
         """
-        params = self.simulation_params.copy()
-        params['num_servers'] = int(position[0])
-        params['num_cooks'] = int(position[1])
-        params['inventory_df']['Quantity'] = position[2:]
-        simulator = RestaurantSimulator(**params)
-        simulator.run_simulation()
-        return simulator.calculate_profit()
-
+        num_servers = int(position[0])
+        num_cooks = int(position[1])
+        inventory_list = position[2:]
+        self.simulator.num_servers = num_servers
+        self.simulator.num_cooks = num_cooks
+        self.simulator.init_inventory_df['Quantity'] = inventory_list
+        profit = []
+        for _ in range(num_runs):
+            self.simulator.run_simulation()
+            profit.append(self.simulator.calculate_profit())
+        return np.mean(profit)
+        
     def optimize(self):
         """
         Perform PSO optimization.
@@ -84,7 +89,8 @@ class PSOOptimizer:
             *[self.bounds["inventory"][1]] * (self.dimension - 2)
         ])
 
-        for _ in range(self.max_iter):
+        for j in range(self.max_iter):
+            print("iteration ", j)
             for i in range(self.swarm_size):
                 r1, r2 = np.random.rand(), np.random.rand()
                 cognitive_component = c1 * r1 * (personal_best_positions[i] - particles[i])
@@ -105,5 +111,6 @@ class PSOOptimizer:
                 if fitness > self.global_best_value:
                     self.global_best_value = fitness
                     self.global_best_position = particles[i]
+                    print(fitness, particles[i])
 
         return self.global_best_position, self.global_best_value

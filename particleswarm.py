@@ -88,7 +88,7 @@ class PSOOptimizer:
             self.bounds["num_cooks"][1],
             *[self.bounds["inventory"][1]] * (self.dimension - 2)
         ])
-
+        # Main PSO Algo
         for j in range(self.max_iter):
             print("iteration ", j)
             for i in range(self.swarm_size):
